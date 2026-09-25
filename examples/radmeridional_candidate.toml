@@ -1,0 +1,35 @@
+[run]
+directory = "runs/radmeridional_candidate"
+scratch_directory = "runs/radmeridional_candidate/scratch"
+
+[case]
+name = "radmeridional"
+
+[resources]
+available_cpus = 8
+concurrent_evaluations = 1
+mpi_ranks = 8
+threads_per_rank = 1
+
+[execution]
+backend = "local"
+
+[[candidate]]
+id = "testCandidate"
+
+[candidate.parameters]
+alpha_1_0 = 90.0
+alpha_1_1 = 75.0
+alpha_1_2 = 52.0
+alpha_2_0 = 45.0
+alpha_2_1 = 27.0
+alpha_2_2 = 25.0
+alpha_2_3 = 10.0
+ratioX_0 = 0.65
+ratioX_1 = 0.65
+ratioX_2 = 0.15
+ratioX_3 = 0.24
+deltaY_0 = 0.80
+deltaY_1 = 0.75
+deltaY_2 = 0.75
+deltaY_3 = 0.53

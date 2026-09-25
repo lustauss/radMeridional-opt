@@ -1,0 +1,91 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "radmeridional-opt"
+version = "0.1.0"
+description = "RadMeridional case plugin for hydroflow-opt"
+readme = "README.md"
+authors = [
+  {name = "Simon Eyeselein", email = "simon.eyselein@ihs.uni-stuttgart.de"},
+  {name = "Thomas Isensee", email = "thomas.isensee@iwr.uni-heidelberg.de"},
+]
+requires-python = ">=3.11,<3.14"
+license-files = ["LICEN[CS]E*"]
+license = "MIT"
+classifiers = [
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+dependencies = [
+  "foamlib",
+  "hydroflow-opt",
+  "numpy",
+  "oslo.concurrency",
+  "scikit-learn"
+  ]
+
+[project.optional-dependencies]
+dev = [
+    "mypy",
+    "pytest",
+    "pytest-cov",
+    "ruff",
+]
+lint = [
+    "mypy",
+    "ruff",
+]
+tests = [
+    "pytest",
+    "pytest-cov",
+]
+
+[project.entry-points."hydroflow_opt.cases"]
+radmeridional = "radmeridional_opt.case:RadMeridionalCase"
+
+[project.scripts]
+radmeridional-opt = "radmeridional_opt.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/radmeridional_opt"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.mypy]
+exclude = [
+  "^src/tistos_opt/_legacy/",
+]
+
+[[tool.mypy.overrides]]
+module = ["hydroflow_opt", "hydroflow_opt.*"]
+ignore_missing_imports = true
+
+[tool.ruff]
+line-length = 79
+target-version = "py311"
+extend-exclude = ["src/tistos_opt/_legacy"]
+force-exclude = true
+
+[tool.ruff.lint]
+select = [
+    "B",   # flake8-bugbear
+    "D",   # pydocstyle
+    "E",   # pycodestyle error rules
+    "F",   # Pyflakes
+    "I",   # isort
+    "SIM", # flake8-simplify
+    "UP",  # pyupgrade
+    "RUF", # Ruff-specific rules
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D"]
