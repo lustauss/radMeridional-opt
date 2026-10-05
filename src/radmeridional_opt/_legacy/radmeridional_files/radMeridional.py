@@ -1563,9 +1563,12 @@ class radMeridional:
     def GiveFitness(self):
 
         if self.isOk_:
+            
+            dh_ru_opt = 200
 
             #fit = np.abs(dh_ru + 0.8)/0.8 + (1.0 - eta)
-            fit = -1*(np.abs(self.dh_ru_)*self.eta_)
+            #fit = -1*(np.abs(self.dh_ru_)*self.eta_)
+            fit = (1 - self.eta_)*(np.abs(self.dh_ru_ - dh_ru_opt))/dh_ru_opt
 
         else:
             fit = 3.0

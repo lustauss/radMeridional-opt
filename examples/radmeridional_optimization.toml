@@ -1,0 +1,25 @@
+[run]
+directory = "runs/radmeridional_optimization"
+scratch_directory = "${TMPDIR}/testDir"
+
+[case]
+name = "radmeridional"
+
+[resources]
+available_cpus = 32
+concurrent_evaluations = 2
+memory_mib_per_evaluation = 9536
+mpi_ranks = 16
+threads_per_rank = 1
+
+[execution]
+backend = "slurm"
+
+[optimization]
+islands = 2
+population_size = 5
+generations = 2
+differential_weight = 0.8
+crossover_rate = 0.9
+topology = "fully_connected"
+

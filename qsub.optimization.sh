@@ -1,12 +1,14 @@
 #!/bin/bash
 
-#SBATCH --nodes=1
-#SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=8
-#SBATCH --nodelist=mars
+#SBATCH --nodes=2
+#SBATCH --ntasks-per-node=16
+#SBATCH --mem=10G
+#SBATCH --cpus-per-task=1
+#SBATCH --hint=nomultithread
+#SBATCH --nodelist=propeller,kraken
 
 ##export TMPDIR="$PWD"
-##export TMPDIR="/mnt/tscratch/lstauss-MA2/testDir"
+export TMPDIR="/mnt/tscratch/lstauss-MA2"
 
 # OpenFOAM environment
 . source-dtoo
@@ -14,11 +16,13 @@
 hostname 
 date
 
-echo "SLURM_NTASKS=$SLURM_NTASKS"
-echo "SLURM_CPUS_PER_TASK=$SLURM_CPUS_PER_TASK"
-echo "SLURM_NTASKS_PER_NODE=$SLURM_NTASKS_PER_NODE"
+echo "JOB ID: $SLURM_JOB_ID"
+echo "NODE LIST: $SLURM_JOB_NODELIST"
+echo "NUM NODES: $SLURM_JOB_NUM_NODES"
 
-hydroflow-opt optimize examples/radmeridional_candidate.toml
+scontrol show hostnames "$SLURM_JOB_NODELIST"
+
+hydroflow-opt optimize examples/radmeridional_optimization.toml
 
 date
 

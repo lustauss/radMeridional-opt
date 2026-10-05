@@ -9,7 +9,7 @@ import os
 import shutil
 import traceback
 import logging
-
+import glob
 logging.basicConfig(
   format='[ %(asctime)s - %(levelname)8s - %(filename)s:%(lineno)d ]'
          ' - %(message)s', 
@@ -330,7 +330,7 @@ class runRadMeridional:
             evaluation = radMeridional(self.state)
             evaluation.evaluate(end_time)
 
-            if aProb.isOk_:
+            if evaluation.isOk_:
                 logging.info("StateLabel = %s -> OK", self.state)
             else:
                 logging.info("StateLabel = %s -> FAIL", self.state)
@@ -356,6 +356,7 @@ def cleanup(state, case="of", log_errors=True):
     try:
         fileList = glob.glob(state + ".*", recursive=False)
         fileList = fileList + glob.glob(state + "_*", recursive=False)
+        fileList = fileList + glob.glob("dtMeshGRegion_*", recursive=False)
         for i in ["_"]:
             fileList.append(case + i + state)
         for filePath in fileList:

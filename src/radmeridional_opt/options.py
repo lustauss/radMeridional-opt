@@ -9,7 +9,7 @@ class SolverOptions:
     """Iteration counts for each stage of the steady solver."""
 
     laminar_iterations: int = 500
-    turbulent_iterations: int = 100
+    turbulent_iterations: int = 1000
 
     @property
     def end_time(self) -> int:
