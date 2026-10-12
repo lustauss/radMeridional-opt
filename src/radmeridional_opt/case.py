@@ -15,6 +15,7 @@ from hydroflow_opt.models import (
     StageResources,
 )
 
+# laminar and turbulent simulation times can be specified in options.py
 from radmeridional_opt.options import SolverOptions
 
 @dataclass(frozen=True)
@@ -25,7 +26,10 @@ class ParameterDefinition:
     lower_bound: float
     upper_bound: float
 
-
+# Creates a tuple contaiing the optimization parameters
+# Parameters = Tuple( 
+#   ParameterDefinition(name, lower_bound, upper_bound)
+#)
 PARAMETERS = (
     ParameterDefinition("alpha_1_0", 85.0, 95.0),
     ParameterDefinition("alpha_1_1", 70.0, 80.0),
@@ -68,14 +72,29 @@ class RadMeridionalCase:
         candidate: Candidate,
         paths: EvaluationPaths,
         resources: ResourceRequest,
-    ) -> EvaluationPlan:
-        
+    ) -> EvaluationPlan: 
         """Return the serial preparation and parallel solver stages."""
+
+        # unique candidate id used for name of of-case
         state = _state_label(candidate.id)
+
+        # subdirectory of scratch_directory
+        # here the cases are created and simulated
         work_dir = paths.scratch_dir / "radmeridional"
+        
+        # directory of the of-case
         case_dir = work_dir / f"of_{state}"
+
+        # paths.evaluation_dir is specified as directory in CONFIG
         state_path = paths.evaluation_dir / "radmeridional-state.json"
+        
+        # Set up python stage command -> this will run the evaluation stages
+        ## "radmeridional_opt" points to /src/radmeridional_opt
+        ## stages points to stages.py
+        ### stages.py forms bridge between the evaluation stages and runtime.py
         python_stage = (sys.executable, "-m", "radmeridional_opt.stages")
+
+        # Set up solver resources and solver command
         solver_resources = StageResources(
             processes=resources.mpi_ranks,
             threads_per_process=resources.threads_per_rank,
@@ -83,9 +102,12 @@ class RadMeridionalCase:
         solver_command: tuple[str, ...] = ("simpleFoam",)
         if resources.mpi_ranks > 1:
             solver_command += ("-parallel", "-fileHandler", "collated")
-
+        
+        # return an EvaluationPlan object
         return EvaluationPlan(
             stages=(
+                # Prepare stage
+                # Create geometry and ofCase
                 EvaluationStage(
                     name="prepare",
                     command=(
@@ -96,12 +118,15 @@ class RadMeridionalCase:
                     ),
                     working_directory=paths.scratch_dir,
                 ),
+                # solve laminar
                 EvaluationStage(
                     name="solve-laminar",
                     command=solver_command,
                     working_directory=case_dir,
                     resources=solver_resources,
                 ),
+                # configure turbulent
+                # sets turbulence and end time
                 EvaluationStage(
                     name="configure-turbulent",
                     command=(
@@ -111,12 +136,14 @@ class RadMeridionalCase:
                     ),
                     working_directory=case_dir,
                 ),
+                # solve turbulent
                 EvaluationStage(
                     name="solve-turbulent",
                     command=solver_command,
                     working_directory=case_dir,
                     resources=solver_resources,
                 ),
+                # evaluate simulation, return fitness
                 EvaluationStage(
                     name="finalize",
                     command=(

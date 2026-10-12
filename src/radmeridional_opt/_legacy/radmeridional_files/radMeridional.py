@@ -1146,7 +1146,7 @@ class radMeridional:
         return outList, order
          
 
-    def createOFCase(self, h_inlet):
+    def createOFCase(self, h_inlet, nCores = 1):
     
  
         dtOO.lVHOstateHandler().makeState(self.state_)
@@ -1213,6 +1213,7 @@ class radMeridional:
         #)
         #ob.postUpdate()
         
+        logging.info("DEBUG 1")
          
         from dtOOPythonApp.builder import (
           ofOpenFOAMCase_turboMachine,
@@ -1249,7 +1250,7 @@ class radMeridional:
                   "libmixingPlane.so",
                 ]
               )
-            + ofOpenFOAMCase_setupWrapper.decomposeParDict(1, 'metis')
+            + ofOpenFOAMCase_setupWrapper.decomposeParDict(nCores, 'metis')
             + ofOpenFOAMCase_setupWrapper.fvSchemes()
             + ofOpenFOAMCase_setupWrapper.fvSolution()
             + ofOpenFOAMCase_setupWrapper.transportModel()
@@ -1372,13 +1373,15 @@ class radMeridional:
             ]
         ).buildExtract( self.container )
         
+
+        logging.info("DEBUG 2")
         #
         # Output to log of the current state label
         #
         logging.info( 
           "Current state is > %s <." % (dtOO.lVHOstateHandler().commonState()) 
         )
-
+        
         #self.cDir_ = dC["of"].getDirectory(dtOO.lVHOstateHandler().commonState())
         self.dC["of"].runCurrentState()
     
@@ -1418,6 +1421,12 @@ class radMeridional:
               }
             fc.fv_solution["SIMPLE"] = {
                 "nNonOrthogonalCorrectors": 20,
+                "residualControl": {
+                    "p": 1e-5,
+                    "U": 1e-5,
+                    "k": 1e-5,
+                    "omega": 1e-5,
+                },
                 #"consistent": "yes"
               }
 
@@ -1478,76 +1487,74 @@ class radMeridional:
         _g = 9.81
         for var in ["U", "p",]:
           for patch in [
-                  "gv_mesh_inlet", "gv_mesh_outlet", 
+                  #"gv_mesh_inlet", "gv_mesh_outlet", 
                   "ru_mesh_inlet", "ru_mesh_outlet", 
-                  "dt_mesh_inlet", "dt_mesh_outlet"
+                  #"dt_mesh_inlet", "dt_mesh_outlet"
                 ]:
             fc.run(["patchToCsv", var, patch])
         
         _time = str(end_time) 
-        #_time = 2000
+        #_time = "2000"
 
-        pT_gv_in = dtScalarDeveloping( 
-            dtDeveloping(self.cDir_+"/postProcessing/PT_gv_mesh_inlet").Read(pattern={"*.dat": ":,1:"}) 
-        )
-        pT_gv_out = dtScalarDeveloping( 
-            dtDeveloping(self.cDir_+"/postProcessing/PT_gv_mesh_outlet").Read(pattern={"*.dat": ":,1:"}) 
-        )
+        #pT_gv_in = dtScalarDeveloping( 
+        #    dtDeveloping(self.cDir_+"/postProcessing/PT_gv_mesh_inlet").Read(pattern={"*.dat": ":,1:"}) 
+        #)
+        #pT_gv_out = dtScalarDeveloping( 
+        #    dtDeveloping(self.cDir_+"/postProcessing/PT_gv_mesh_outlet").Read(pattern={"*.dat": ":,1:"}) 
+        #)
         pT_ru_in = dtScalarDeveloping( 
             dtDeveloping(self.cDir_+"/postProcessing/PT_ru_mesh_inlet").Read(pattern={"*.dat": ":,1:"}) 
         )
         pT_ru_out = dtScalarDeveloping(
             dtDeveloping(self.cDir_+"/postProcessing/PT_ru_mesh_outlet").Read(pattern={"*.dat": ":,1:"}) 
         )
-        pT_dt_in = dtScalarDeveloping(
-            dtDeveloping(self.cDir_+"/postProcessing/PT_dt_mesh_inlet").Read(pattern={"*.dat": ":,1:"}) 
-        )
-        pT_dt_out = dtScalarDeveloping(
-            dtDeveloping(self.cDir_+"/postProcessing/PT_dt_mesh_outlet").Read(pattern={"*.dat": ":,1:"}) 
-        )
+        #pT_dt_in = dtScalarDeveloping(
+        #    dtDeveloping(self.cDir_+"/postProcessing/PT_dt_mesh_inlet").Read(pattern={"*.dat": ":,1:"}) 
+        #)
+        #pT_dt_out = dtScalarDeveloping(
+        #    dtDeveloping(self.cDir_+"/postProcessing/PT_dt_mesh_outlet").Read(pattern={"*.dat": ":,1:"}) 
+        #)
 
-        dh_gv0 = (pT_gv_out.MeanLast(10) - pT_gv_in.MeanLast(10))/_g
-        dh_ru0 = (pT_ru_out.MeanLast(10) - pT_ru_in.MeanLast(10))/_g
-        dh_dt0 = (pT_dt_out.MeanLast(10) - pT_dt_in.MeanLast(10))/_g
+        Q_ru_out = dtScalarDeveloping( 
+            dtDeveloping(self.cDir_+"/postProcessing/Q_ru_mesh_outlet").Read(pattern={"*.dat": ":,1:"}) 
+        )
+        Q_ru = np.abs(Q_ru_out.MeanLast(100))
+        changeLastQ_ru = np.abs(Q_ru_out.ChangeLast(100))
 
-        dh = dh_gv0 + dh_ru0 + dh_dt0
-        logging.info("dh = %f" % dh)
+        
+        #dh_gv0 = (pT_gv_out.MeanLast(100) - pT_gv_in.MeanLast(100))/_g
+        self.dh_ru_ = (pT_ru_out.MeanLast(100) - pT_ru_in.MeanLast(100))/_g
+        changeLastDh_ru = (pT_ru_out.ChangeLast(100) - pT_ru_in.ChangeLast(100))/_g
+        #dh_dt0 = (pT_dt_out.MeanLast(100) - pT_dt_in.MeanLast(100))/_g
+
+        #dh = dh_gv0 + dh_ru0 + dh_dt0
+        #logging.info("dh = %f" % dh)
         
         F = dtForceDeveloping( 
             dtDeveloping(
                 #self.cDir_+"/postProcessing/F_ru_mesh_blade"
-                "./of_"+self.state_+"/postProcessing/F_ru_mesh_blade"
+                self.cDir_+"/postProcessing/F_ru_mesh_blade"
             ).Read(pattern={'force.dat' : ':,4:10', 'moment.dat' : ':,4:10', '*.*' : ''}) 
         )
 
-        pt_globIn = pT_gv_in.MeanLast(10)
-        pt_globOut = pT_dt_out.MeanLast(10)
-        F_z = F.MomentMeanLast(10)[2]
+        #pt_globIn = pT_gv_in.MeanLast(10)
+        #pt_globOut = pT_dt_out.MeanLast(10)
+        #F_z = F.MomentMeanLast(10)[2]
 
-        U_gv_in = dtValueField(dtField(self.cDir_+"/gv_mesh_inlet_U_"+_time+".csv").Read())
-        U_gv_out = dtValueField(dtField(self.cDir_+"/gv_mesh_outlet_U_"+_time+".csv").Read())
-        p_gv_in = dtValueField(dtField(self.cDir_+"/gv_mesh_inlet_p_"+_time+".csv").Read())
-        p_gv_out = dtValueField(dtField(self.cDir_+"/gv_mesh_outlet_p_"+_time+".csv").Read())
-        Q_gv = np.abs(p_gv_in.IntQ())
-
-        h_tot_gv_in = (p_gv_in.IntValueQ() / _g + U_gv_in.IntMagSquareQ() / (2.*_g))/Q_gv
-
-        U_ru_in = dtValueField(dtField(self.cDir_+"/ru_mesh_inlet_U_"+_time+".csv").Read())
-        U_ru_out = dtValueField(dtField(self.cDir_+"/ru_mesh_outlet_U_"+_time+".csv").Read())
-        p_ru_in = dtValueField(dtField(self.cDir_+"/ru_mesh_inlet_p_"+_time+".csv").Read())
-        p_ru_out = dtValueField(dtField(self.cDir_+"/ru_mesh_outlet_p_"+_time+".csv").Read())
-
-        Q_ru = np.abs(p_ru_in.IntQ())
-        h_tot_ru_in = -(p_ru_in.IntValueQ() / _g + U_ru_in.IntMagSquareQ() / (2.*_g))/Q_ru
-        h_tot_ru_out = (p_ru_out.IntValueQ() / _g + U_ru_out.IntMagSquareQ() / (2.*_g))/Q_ru
-
-        self.dh_ru_ = (h_tot_ru_out - h_tot_ru_in)
         self.M_z_ = F.MomentMeanLast(100)[2]
+        changeLastM_z = F.MomentChangeLast(100)[2]
 
         self.eta_ = self.M_z_ * _omega / (_rho*_g*self.dh_ru_*Q_ru)
+        
+        logging.info("Objective Values of State %s:" % self.state_)
+        logging.info("Q_ru = %f" % Q_ru)
+        logging.info("Change Last 100 Q_ru = %f" % changeLastQ_ru)
+        logging.info("dh_ru = %f" % self.dh_ru_)
+        logging.info("Change Last 100 dh_ru = %f" % changeLastDh_ru)
+        logging.info("M_z = %f" % self.M_z_)
+        logging.info("Change Last 100 M_z = %f" % changeLastM_z)
 
         logging.info("eta = %f" % self.eta_)
-        logging.info("dh_ru = %f" % self.dh_ru_)
 
         #
         # Check if the simulated geometry is a pump or a turbine; if it is a pump,
@@ -1555,23 +1562,44 @@ class radMeridional:
         #
         #failed_fit = min(10,max(10. * np.abs(fit),30))
         
-        self.isOk_ = True
-        if (self.dh_ru_ > 0.0) or (self.M_z_ > 0.0 ) or (self.eta_ > 1.0):
-            self.isOk_ = False
+        self.objectiveOk_ = True
+        self.convergenceOk_ = True
+        
+        Q_ru_max = 27.5/15 * 2
+
+        if (dh_ru_ > 0.0) or (M_z_ > 0.0 ) or (eta_ > 1.0) or (Q_ru > Q_ru_max):
+            logging.info("Objective Values Unphysical")
+            self.objectiveOk_ = False
+        
+        thr = 0.01  # threshold
+        if (
+            np.abs(changeLastQ_ru) > thr * np.abs(Q_ru)
+            or np.abs(changeLastDh_ru) > thr * np.abs(self.dh_ru_)
+            or np.abs(changeLastM_z) > thr * np.abs(self.M_z_)
+        ):
+            logging.info("Convergence Criteria not Reached")
+            self.convergenceOk_ = False
             #fit = failed_fit
 
     def GiveFitness(self):
+        
 
-        if self.isOk_:
+        if self.objectiveOk_ and self.convergenceOk_:
             
+            # desired runner head in optimal operation point
             dh_ru_opt = 200
 
             #fit = np.abs(dh_ru + 0.8)/0.8 + (1.0 - eta)
             #fit = -1*(np.abs(self.dh_ru_)*self.eta_)
-            fit = (1 - self.eta_)*(np.abs(self.dh_ru_ - dh_ru_opt))/dh_ru_opt
+            fit = (1 - self.eta_)*(np.abs(np.abs(self.dh_ru_) - dh_ru_opt))/dh_ru_opt
 
         else:
-            fit = 3.0
+            fit = 0.0
+            if not self.objectiveOk_:
+                fit = fit + 3.0
+            if not self.convergenceOk_:
+                fit = fit + 2.0
+
 
         fitness_extra = {
             "dh_ru": self.dh_ru_,

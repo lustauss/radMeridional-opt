@@ -25,40 +25,60 @@ from hydroflow_opt.results import write_result
 from radmeridional_opt.case import PARAMETERS, _state_label
 from radmeridional_opt.options import SolverOptions
 
-
+# prepare stage 
 def prepare(request_path: Path, state_path: Path) -> None:
     """Generate and decompose one case, ready for the laminar solve."""
+    # hydroflow-opt information management
     request = _read_json(request_path)
     options = SolverOptions.from_options(
         request.get("case", {}).get("options", {})
     )
     candidate = request["candidate"]
     candidate_id = str(candidate["id"])
+    # state name of the of-case is of_rad_<id>
     state = _state_label(candidate_id)
+
+    # optimization parameters
     parameters = candidate["parameters"]
     vector = [float(parameters[item.name]) for item in PARAMETERS]
+
+    # solver resources
     resources = request["context"]["resources"]
     mpi_ranks = int(resources["mpi_ranks"])
     if mpi_ranks < 1:
         raise ValueError("mpi_ranks must be at least one")
-
+    
+    # scratch dir specified in CONFIG
     scratch_dir = Path(request["context"]["scratch_dir"]).resolve()
     scratch_dir.mkdir(parents=True, exist_ok=True)
+    # "TMPDIR" only works for mpi_ranks = 1
     os.environ["TMPDIR"] = str(scratch_dir)
+    # directory where the of-case is located and solved
     work_dir = _stage_case(scratch_dir)
 
-
+    # run the following steps in the work_dir
     with _working_directory(work_dir):
+        # import runRadMeridional.py as implementation of radMeridional
         implementation = _load_implementation(work_dir)
+        # create runRadMeridional object
+        # hand over parameter list (vector) and state name (state)
         evaluation = implementation.runRadMeridional(vector, state)
+        # run pre
+        #   - geometry generation
+        #   - openfoam case creation (mesh gen with timeout)
+        #   - simulation setup
         evaluation.pre()
         
-        #if not evaluation.MeshOk_:
-        #    raise RuntimeError(f"mesh generation failed for {state}")
+        # mesh ok is True if of-case was created sucesfully
+        if not evaluation.MeshOk_:
+            raise RuntimeError(f"mesh generation failed for {state}")
         history = evaluation.get_history()
-
+    
+    # run checkMesh
     case_dir = work_dir / f"of_{state}"
     _run_case_command(case_dir, ["checkMesh"], "log.checkMesh")
+    
+    # case decomposition
     if mpi_ranks > 1:
         _configure_decomposition(case_dir, mpi_ranks)
         _run_case_command(
@@ -66,6 +86,10 @@ def prepare(request_path: Path, state_path: Path) -> None:
             ["decomposePar", "-fileHandler", "collated"],
             "log.decomposePar",
         )
+    # edit of-case to laminar settings
+    #   - laminar end time
+    #   - write interval
+    #   - turbulence off
     _configure_laminar(case_dir, options.laminar_iterations)
 
     _write_json(
@@ -83,14 +107,15 @@ def prepare(request_path: Path, state_path: Path) -> None:
         },
     )
 
-
+# configure turbulent stage
 def configure_turbulent(state_path: Path) -> None:
     """Switch a prepared case from laminar to turbulent settings."""
     state = _read_state(state_path)
+    # simulation end time is specified in options.py
     options = SolverOptions.from_options(state.get("solver_options", {}))
     _configure_turbulent(Path(state["case_dir"]), options.end_time)
 
-
+# finalize stage
 def finalize(
     request_path: Path,
     state_path: Path,
@@ -109,17 +134,25 @@ def finalize(
     mpi_ranks = int(state_data["mpi_ranks"])
     state = str(state_data["state"])
     vector = [float(value) for value in state_data["vector"]]
+
+    # reconstruct simulation
     if mpi_ranks > 1:
         _run_case_command(case_dir, ["reconstructPar"], "log.reconstructPar")
         for processor_dir in case_dir.glob("processor*"):
+            # remove processor folders
             if processor_dir.is_dir():
                 shutil.rmtree(processor_dir)
-
+    
+    # execute the following steps in th working directory
     with _working_directory(work_dir):
-
+        # import runRadMeridional class
         implementation = _load_implementation(work_dir)
         evaluation = implementation.runRadMeridional(vector, state)
+        # get history
         evaluation.history_.update(state_data.get("history", {}))
+        # run evaluate method to return fitness values
+        #   - fitness: defined fitness function
+        #   - extra: eta, moment, head
         fitness, extra = evaluation.evaluate(
             laminar_end_time=options.laminar_iterations,
             end_time=options.end_time,
@@ -137,7 +170,8 @@ def finalize(
         },
     )
     write_result(result_path, result)
-
+    
+    ## delete case data from working directory
     #with _working_directory(work_dir):
     #    implementation.cleanup(state)
 
@@ -241,22 +275,6 @@ def _load_implementation(work_dir: Path) -> Any:
     source = work_dir / "runRadMeridional.py"
     sys.path.insert(0, str(work_dir))
 
-    print("TEST: current working directory")
-    print(Path.cwd())
-    print("TEST: sys.path")
-    
-    print(
-        "radmeridional_files exists:",
-        (work_dir / "radmeridional_files").exists(),
-    )
-
-    print(
-        "radMeridional.py exists:",
-        (work_dir / "radmeridional_files" / "radMeridional.py").exists(),
-    )
-    for path in sys.path:
-        print(path)
-
     try:
         spec = importlib.util.spec_from_file_location(
             "radmeridional_implementation", source
@@ -341,105 +359,3 @@ def _working_directory(path: Path) -> Iterator[None]:
         os.chdir(previous)
 
 
-#"""Runtime bridge to the radmeridional CFD implementation.
-#
-#The external dtOO, foamlib, and OpenFOAM runtime is deliberately imported only
-#when a worker is actually evaluating a candidate.  This keeps the plugin
-#installable and unit-testable on a development laptop.
-#"""
-#
-#from __future__ import annotations
-#
-#import importlib.util
-#import os
-#import sys
-#from importlib.resources import files
-#from pathlib import Path
-#from typing import Any
-#
-#
-#def evaluate(request: dict[str, Any]) -> tuple[float, dict[str, Any]]:
-#    """Evaluate one candidate with the established radmeridional physics code.
-#
-#    The legacy implementation is loaded only here while its geometry and CFD
-#    implementation is being split further.  It contains no Pyro dependency;
-#    the process boundary and all scheduling now belong to hydroflow-opt .
-#    """
-#    scratch_dir = Path(request["context"]["scratch_dir"])
-#    scratch_dir.mkdir(parents=True, exist_ok=True)
-#    resources = request["context"]["resources"]
-#    mpi_ranks = int(resources["mpi_ranks"])
-#    if mpi_ranks < 1:
-#        raise ValueError("mpi_ranks must be at least one")
-#    os.environ["TMPDIR"] = str(scratch_dir)
-#    os.environ["FLOW_OPT_MPI_RANKS"] = str(mpi_ranks)
-#    module = _load_implementation()
-#    parameters = request["candidate"]["parameters"]
-#    candidate_id = request["candidate"]["id"]
-#    fitness, extra, state, history = module.runRadMeridional(
-#        [
-#            float(parameters["alpha_1_0"]),
-#            float(parameters["alpha_1_1"]),
-#            float(parameters["alpha_1_2"]),
-#            float(parameters["alpha_2_0"]),
-#            float(parameters["alpha_2_1"]),
-#            float(parameters["alpha_2_2"]),
-#            float(parameters["alpha_2_3"]),
-#            float(parameters["ratioX_0"]),
-#            float(parameters["ratioX_1"]),
-#            float(parameters["ratioX_2"]),
-#            float(parameters["ratioX_3"]),
-#            float(parameters["deltaY_0"]),
-#            float(parameters["deltaY_1"]),
-#            float(parameters["deltaY_2"]),
-#            float(parameters["deltaY_3"]),
-#        ],
-#        candidate_id,
-#        solver_launcher=_solver_launcher(request, mpi_ranks),
-#    )
-#    return float(fitness), {
-#        "state": state,
-#        "fitness_components": extra,
-#        "history": history,
-#    }
-#
-#
-#def _solver_launcher(request: dict[str, Any], mpi_ranks: int) -> list[str]:
-#    """Return the backend-provided command prefix for ``simpleFoam``."""
-#
-#    execution = request["context"].get("execution")
-#    if execution is None:
-#        return ["mpiexec", "-n", str(mpi_ranks)] if mpi_ranks > 1 else []
-#    launcher = execution.get("mpi_launcher")
-#    if not isinstance(launcher, list) or not all(
-#        isinstance(item, str) and item for item in launcher
-#    ):
-#        raise TypeError("context.execution.mpi_launcher must be a string list")
-#    return list(launcher)
-#
-#
-#def _load_implementation() -> Any:
-#    source = _implementation_path()
-#    if not source.exists():
-#        raise RuntimeError(
-#            "radmeridional implementation is unavailable; install from the "
-#            "radmeridional-opt source checkout with its CFD runtime"
-#        )
-#    sys.path.insert(0, str(source.parent))
-#    spec = importlib.util.spec_from_file_location(
-#        "radmeridional_implementation", source
-#    )
-#    if spec is None or spec.loader is None:
-#        raise RuntimeError(
-#            f"cannot load radmeridional implementation from {source}"
-#        )
-#    module = importlib.util.module_from_spec(spec)
-#    spec.loader.exec_module(module)
-#    return module
-#
-#
-#def _implementation_path() -> Path:
-#    bundled = files("radmeridional_opt").joinpath("_legacy", "runRadMeridional.py")
-#    if bundled.is_file():
-#        return Path(bundled)
-#    return Path(__file__).resolve().parents[2] / "runRadMeridional.py"

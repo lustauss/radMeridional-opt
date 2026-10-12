@@ -3,6 +3,8 @@ import dtOOPythonSWIG as dtOO
 import foamlib as fl
 import sys
 import subprocess
+import multiprocessing as mp
+import signal
 import time
 #from utils import * 
 import os
@@ -278,11 +280,13 @@ class runRadMeridional:
         self.wd = "./"
         self.mainDir = self.wd
         os.chdir(self.wd)
-
+    
+    #
+    # Preparation stage
+    #
     def pre(self): 
-        #
+    
         # Geometry Generation
-        #
         # Configure the geometry parameters
         geomConf = Config(self.x)
         configM, configGV, configRu, h_inlet = geomConf.getConfig()
@@ -294,17 +298,22 @@ class runRadMeridional:
         model.createBlade(configGV)
         model.createBlade(configRu)
         
-
-        #
         # openFoam Case Creation
-        #
         start_time = time.time()
         logging.info(f"Start Meshing for State {self.state}.")
-
+        
         try:
-            model.createOFCase(h_inlet)
+            # case creation is forked with a timer
+            # this is done to prevent getting stuck in gmsh meshing
+            run_with_timeout(
+                model.createOFCase,
+                1800,
+                h_inlet
+            )
+            # applying solver settings
             model.setupSim()
-
+            
+            # check if the openfoam case was sucessfully created
             if not (
                 os.path.exists("of_" + self.state)
                 and os.path.exists("of_" + self.state + "/system")
@@ -321,12 +330,16 @@ class runRadMeridional:
             logging.exception("Exception:")
             logging.info("self.MeshOk_ = False")
             self.MeshOk_ = False
-
+    
+    #
+    # evaluation stage
+    #
     def evaluate(self, *, laminar_end_time=100, end_time=500):
         
         try:
             logging.info(f"POST PROCESSING {self.state}")
-
+            
+            # evaluate the simuated case
             evaluation = radMeridional(self.state)
             evaluation.evaluate(end_time)
 
@@ -342,6 +355,7 @@ class runRadMeridional:
             raise
         return fit, fit_extra
     
+    # delete case data
     def delete(self):
         cleanup(
             self.state,
@@ -350,6 +364,47 @@ class runRadMeridional:
 
     def get_history(self):
         return self.history_
+
+#
+# run a function forked with a timeout
+#
+def run_with_timeout(func, timeout, *args, **kwargs):
+    pid = os.fork()
+
+    if pid == 0:
+        # Child process
+        try:
+            func(*args, **kwargs)
+            os._exit(0)
+        except Exception:
+            logging.exception("Exception in child process")
+            os._exit(1)
+
+    # Parent process
+    start = time.time()
+
+    while True:
+        finished_pid, status = os.waitpid(pid, os.WNOHANG)
+
+        if finished_pid == pid:
+            if os.WIFEXITED(status) and os.WEXITSTATUS(status) == 0:
+                return
+
+            raise RuntimeError("Child process failed")
+
+        if time.time() - start >= timeout:
+            logging.error(
+                f"Process {pid} exceeded timeout of {timeout} seconds. Killing it."
+            )
+
+            os.kill(pid, signal.SIGKILL)
+            os.waitpid(pid, 0)  # reap child
+
+            raise TimeoutError(
+                f"{func.__name__} exceeded timeout of {timeout} seconds"
+            )
+
+        time.sleep(0.1)
 
 def cleanup(state, case="of", log_errors=True):
     """Delete generated files for one state while retaining staged assets."""
@@ -368,35 +423,4 @@ def cleanup(state, case="of", log_errors=True):
         if log_errors:
             logging.info("Catch exception in delete: %s", e)
 
-if __name__ == "__main__":
-
-    state = "testState"
-    x = [
-            90.,
-            75.,
-            52.,
-            
-            45.,
-            27.,
-            25.,
-            10.,
-            
-            0.65,
-            0.65,
-            0.15,
-            0.24,
-            
-            0.80,
-            0.75,
-            0.75,
-            0.53,
-        ]
-
-    fit, fit_extra, state, history = runRadMeridional(x, state)
-
-    print("fit :")
-    print(fit)
-    print("fit_extra :")
-    print(fit_extra)
-
-    # ------------------- EOF ------------------- #
+# ----------------------------------- EOF ----------------------------------- #
