@@ -1212,8 +1212,6 @@ class radMeridional:
         #  None, None, None, None, None, rmsh
         #)
         #ob.postUpdate()
-        
-        logging.info("DEBUG 1")
          
         from dtOOPythonApp.builder import (
           ofOpenFOAMCase_turboMachine,
@@ -1243,6 +1241,30 @@ class radMeridional:
                              'gv_mesh_suction', 'gv_mesh_pressure',
                              'ru_mesh_suction', 'ru_mesh_pressure'],
                 FPatches = ['gv_mesh_blade', 'ru_mesh_blade'],
+                convergenceCriteria = {
+                    "bufferSizeAvg" : 100,
+                    "bufferSizeConv" : 20,
+                    "minTimeSteps" : 200,
+                    "criteria" : {
+                        "F_ru_mesh_blade" : {
+                            "moment" : 2,
+                            "toleranceRSD" : 0.01,
+                            "toleranceRel" : 0.01,
+	                    },
+	                    "PT_gv_mesh_inlet" : {
+                            "toleranceRSD" : 0.01,
+                            "toleranceRel" : 0.01,
+	                    },
+	                    "PT_dt_mesh_outlet" : {
+                            "toleranceRSD" : 0.01,
+                            "toleranceRel" : 0.01,
+	                    },
+                        "Q_dt_mesh_outlet" : {
+                            "toleranceRSD" : 0.01,
+                            "toleranceRel" : 0.01,
+	                    },
+	                },
+                },
                 libs = [
                   "libsimpleFunctionObjects.so",
                   ##"libsimpleSwakFunctionObjects.so",
@@ -1250,7 +1272,8 @@ class radMeridional:
                   "libmixingPlane.so",
                 ]
               )
-            + ofOpenFOAMCase_setupWrapper.decomposeParDict(nCores, 'metis')
+            + ofOpenFOAMCase_setupWrapper.decomposeParDict(nCores, 'scotch')
+            #+ ofOpenFOAMCase_setupWrapper.decomposeParDict(nCores, 'metis')
             + ofOpenFOAMCase_setupWrapper.fvSchemes()
             + ofOpenFOAMCase_setupWrapper.fvSolution()
             + ofOpenFOAMCase_setupWrapper.transportModel()
@@ -1373,8 +1396,6 @@ class radMeridional:
             ]
         ).buildExtract( self.container )
         
-
-        logging.info("DEBUG 2")
         #
         # Output to log of the current state label
         #
@@ -1398,7 +1419,6 @@ class radMeridional:
             # "getDirectory" function returns the case directory that was created
             #
             fc = foamlib.FoamCase(self.cDir_)
-
             fc.turbulence_properties["RAS"]["turbulence"] = False
             fc.fv_schemes['gradSchemes']['none'] = ('cellLimited', 'Gauss', 'linear', 0.33)
             fc.fv_schemes['gradSchemes']['grad(p)'] = ('cellLimited', 'Gauss', 'linear', 0.33)
@@ -1421,12 +1441,6 @@ class radMeridional:
               }
             fc.fv_solution["SIMPLE"] = {
                 "nNonOrthogonalCorrectors": 20,
-                "residualControl": {
-                    "p": 1e-5,
-                    "U": 1e-5,
-                    "k": 1e-5,
-                    "omega": 1e-5,
-                },
                 #"consistent": "yes"
               }
 
@@ -1434,30 +1448,41 @@ class radMeridional:
                   'mixingInterfacePolyPatch': 2
                 }
             fc.control_dict['writeInterval'] = 100
-            fc.control_dict['endTime'] = 100
-            #solver_cmd = [*self.solver_launcher_, "simpleFoam"]
-            #if cpus_per_task > 1:
-            #    solver_cmd.append("-parallel")
-            #fc.run(cmd=solver_cmd)
-            ##if cpus_per_task > 1:
-            ##    fc.run(cmd=["mpiexec", "--oversubscribe", "-n", f"{cpus_per_task}","simpleFoam", "-parallel"])
-            ##else:
-            ##    fc.run()
+            fc.control_dict['endTime'] = 500
+            
+            # make the of-files modifiable during runtime
+            fc.control_dict['runTimeModifiable'] = True
 
-            #fc.control_dict['endTime'] = 2000
-            #fc.control_dict['writeInterval'] = 100
-            ##fc.control_dict['purgeWrite'] = 10
-            #fc.turbulence_properties["RAS"]["turbulence"] = True
-            #fc.run(cmd=solver_cmd)
+            # create a function which exchanges fvSolution with a modified file
+            # at a specific runtime
+            ## fileToUpdate: fvSolution   -> simulation starts with these settings
+            ## timeVsFile: [
+            ##    Time,           -> time where settings are changed,
+            ##    "Path/To/File"  -> file which has new settings which will be written to fileToUpdate
+            ## ]
+            fc.control_dict['functions']['updateFvSolution'] = {
+                'type': 'timeActivatedFileUpdate',
+                'libs': ['utilityFunctionObjects'],
+                'writeControl': 'timeStep',
+                'writeInterval': 1,
+                'fileToUpdate': '"$FOAM_CASE/system/fvSolution"',   
+                'timeVsFile': [
+                    [600, '"$FOAM_CASE/system/fvSolution.update"']
+                ]
+            }
+            
+            #
+            # fvSolution.update -> file which will update fvSolution as specified in 'timeVsFile'
+            #
+            # copy the fvSolution file
+            source = Path(self.cDir_) / "system" / "fvSolution"
+            target = Path(self.cDir_) / "system" / "fvSolution.update"
+            shutil.copy2(source, target)
 
-            ##if cpus_per_task > 1:
-            ##    fc.run(cmd=["mpiexec", "--oversubscribe", "-n", f"{cpus_per_task}","simpleFoam", "-parallel"])
-            ##else:
-            ##    fc.run()
-
-            #if cpus_per_task > 1:
-            #    fc.run(["reconstructPar", '-time', '500,2000'])
-            #    #fc.run(["reconstructPar", '-time', '100'])
+            # open the copy with foamlib and edit the values
+            fv_orthogonal = foamlib.FoamFile(target)
+            with fv_orthogonal as f:
+              f["SIMPLE"]["nNonOrthogonalCorrectors"] = 5
 
         except:
             logging.exception(f"Failed: {self.state_}.")
@@ -1524,6 +1549,7 @@ class radMeridional:
         
         #dh_gv0 = (pT_gv_out.MeanLast(100) - pT_gv_in.MeanLast(100))/_g
         self.dh_ru_ = (pT_ru_out.MeanLast(100) - pT_ru_in.MeanLast(100))/_g
+
         changeLastDh_ru = (pT_ru_out.ChangeLast(100) - pT_ru_in.ChangeLast(100))/_g
         #dh_dt0 = (pT_dt_out.MeanLast(100) - pT_dt_in.MeanLast(100))/_g
 
@@ -1567,7 +1593,7 @@ class radMeridional:
         
         Q_ru_max = 27.5/15 * 2
 
-        if (dh_ru_ > 0.0) or (M_z_ > 0.0 ) or (eta_ > 1.0) or (Q_ru > Q_ru_max):
+        if (self.dh_ru_ > 0.0) or (self.M_z_ > 0.0 ) or (self.eta_ > 1.0) or (Q_ru > Q_ru_max):
             logging.info("Objective Values Unphysical")
             self.objectiveOk_ = False
         
