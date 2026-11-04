@@ -1533,6 +1533,8 @@ class radMeridional:
         pT_ru_out = dtScalarDeveloping(
             dtDeveloping(self.cDir_+"/postProcessing/PT_ru_mesh_outlet").Read(pattern={"*.dat": ":,1:"}) 
         )
+        changeLastPT_ru_in = np.abs(pT_ru_in.ChangeLast(100))
+        changeLastPT_ru_out = np.abs(pT_ru_out.ChangeLast(100))
         #pT_dt_in = dtScalarDeveloping(
         #    dtDeveloping(self.cDir_+"/postProcessing/PT_dt_mesh_inlet").Read(pattern={"*.dat": ":,1:"}) 
         #)
@@ -1577,6 +1579,8 @@ class radMeridional:
         logging.info("Change Last 100 Q_ru = %f" % changeLastQ_ru)
         logging.info("dh_ru = %f" % self.dh_ru_)
         logging.info("Change Last 100 dh_ru = %f" % changeLastDh_ru)
+        logging.info("Change Last 100 pt_ru_in = %f" % changeLastPT_ru_in)
+        logging.info("Change Last 100 pt_ru_out = %f" % changeLastPT_ru_out)
         logging.info("M_z = %f" % self.M_z_)
         logging.info("Change Last 100 M_z = %f" % changeLastM_z)
 
@@ -1597,11 +1601,11 @@ class radMeridional:
             logging.info("Objective Values Unphysical")
             self.objectiveOk_ = False
         
-        thr = 0.01  # threshold
+        thr = 0.02  # threshold
         if (
-            np.abs(changeLastQ_ru) > thr * np.abs(Q_ru)
-            or np.abs(changeLastDh_ru) > thr * np.abs(self.dh_ru_)
-            or np.abs(changeLastM_z) > thr * np.abs(self.M_z_)
+            np.abs(changeLastQ_ru) 
+            or np.abs(changeLastDh_ru)
+            or np.abs(changeLastM_z)
         ):
             logging.info("Convergence Criteria not Reached")
             self.convergenceOk_ = False
