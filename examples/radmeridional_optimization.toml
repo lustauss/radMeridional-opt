@@ -1,6 +1,6 @@
 [run]
 directory = "runs/radmeridional_optimization"
-scratch_directory = "testDir"
+scratch_directory = "ws_optScratch"
 
 [case]
 name = "radmeridional"

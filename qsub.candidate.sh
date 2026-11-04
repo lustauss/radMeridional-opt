@@ -1,23 +1,20 @@
 #!/bin/bash
 
+#SBATCH --job-name=candidate
+#SBATCH --partition=cpuonly
 #SBATCH --nodes=1
-#SBATCH --ntasks-per-node=8
+#SBATCH --ntasks=8
 #SBATCH --cpus-per-task=1
-#SBATCH --nodelist=mars
+#SBATCH --mem=10G
+#SBATCH --time=03:00:00
 
-##export TMPDIR="$PWD"
-##export TMPDIR="/mnt/tscratch/lstauss-MA2/testDir"
-
-# OpenFOAM environment
-. source-dtoo
+# environment
+source ~/pe
 
 hostname 
 date
 
-echo "SLURM_NTASKS=$SLURM_NTASKS"
-echo "SLURM_CPUS_PER_TASK=$SLURM_CPUS_PER_TASK"
-echo "SLURM_NTASKS_PER_NODE=$SLURM_NTASKS_PER_NODE"
-
+# run 
 hydroflow-opt run examples/radmeridional_candidate_slurm.toml
 
 date

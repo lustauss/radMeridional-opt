@@ -180,7 +180,7 @@ def _configure_decomposition(case_dir: Path, mpi_ranks: int) -> None:
     path = case_dir / "system" / "decomposeParDict"
     _replace_assignment(path, "numberOfSubdomains", str(mpi_ranks))
     #_replace_assignment(path, "method", "scotch")
-    _replace_assignment(path, "method", "metis")
+    #_replace_assignment(path, "method", "metis")
 
 
 def _configure_laminar(case_dir: Path, end_time: int = 100) -> None:
