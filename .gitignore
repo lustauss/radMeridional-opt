@@ -142,3 +142,7 @@ cython_debug/
 
 # Example runs
 examples/runs/
+examples/ws_*/
+
+# Random stuff
+*.png
