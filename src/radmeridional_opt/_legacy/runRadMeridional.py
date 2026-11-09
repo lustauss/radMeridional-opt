@@ -343,10 +343,12 @@ class runRadMeridional:
             evaluation = radMeridional(self.state)
             evaluation.evaluate(end_time)
 
-            if evaluation.isOk_:
+            if evaluation.objectiveOk_ and evaluation.convergenceOk_:
                 logging.info("StateLabel = %s -> OK", self.state)
             else:
                 logging.info("StateLabel = %s -> FAIL", self.state)
+                logging.info("objective: %s", evaluation.objectiveOk_)
+                logging.info("convergence: %s (no check implemented)", evaluation.convergenceOk_)
                 pass
             fit, fit_extra = evaluation.GiveFitness()
             logging.info(f"FITNESS of {self.state}: {fit}")

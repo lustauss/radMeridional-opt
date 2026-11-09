@@ -1,0 +1,25 @@
+[run]
+directory = "runs/radmeridional_initial"
+scratch_directory = "ws_optScratch/initial"
+
+[case]
+name = "radmeridional"
+
+[resources]
+available_cpus = 76
+concurrent_evaluations = 4
+memory_mib_per_evaluation = 9536
+mpi_ranks = 19
+threads_per_rank = 1
+
+[execution]
+backend = "slurm"
+
+[optimization]
+islands = 4
+population_size = 10
+generations = 0
+differential_weight = 0.8
+crossover_rate = 0.9
+topology = "fully_connected"
+
