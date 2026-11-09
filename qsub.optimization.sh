@@ -16,8 +16,8 @@ source ~/pe
 hostname 
 date
 
-#hydroflow-opt optimize examples/radmeridional_optimization.toml
-hydroflow-opt resume examples/runs/radmeridional_optimization
+hydroflow-opt optimize examples/radmeridional_optimization.toml
+#hydroflow-opt resume examples/runs/radmeridional_optimization
 
 date
 
