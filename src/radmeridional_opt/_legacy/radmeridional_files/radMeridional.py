@@ -1601,15 +1601,15 @@ class radMeridional:
             logging.info("Objective Values Unphysical")
             self.objectiveOk_ = False
         
-        thr = 0.02  # threshold
-        if (
-            np.abs(changeLastQ_ru) 
-            or np.abs(changeLastDh_ru)
-            or np.abs(changeLastM_z)
-        ):
-            logging.info("Convergence Criteria not Reached")
-            self.convergenceOk_ = False
-            #fit = failed_fit
+        #thr = 0.02  # threshold
+        #if (
+        #    np.abs(changeLastQ_ru) 
+        #    or np.abs(changeLastDh_ru)
+        #    or np.abs(changeLastM_z)
+        #):
+        #    logging.info("Convergence Criteria not Reached")
+        #    self.convergenceOk_ = False
+        #    #fit = failed_fit
 
     def GiveFitness(self):
         

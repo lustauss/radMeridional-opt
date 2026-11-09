@@ -6,17 +6,17 @@ scratch_directory = "ws_optScratch"
 name = "radmeridional"
 
 [resources]
-available_cpus = 16
-concurrent_evaluations = 2
+available_cpus = 76
+concurrent_evaluations = 4
 memory_mib_per_evaluation = 9536
-mpi_ranks = 8
+mpi_ranks = 19
 threads_per_rank = 1
 
 [execution]
 backend = "slurm"
 
 [optimization]
-islands = 2
+islands = 4
 population_size = 5
 generations = 2
 differential_weight = 0.8
